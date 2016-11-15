@@ -4,7 +4,6 @@ import sqlite3
 #   1: http://stackoverflow.com/questions/10648490/removing-first-appearance-of-word-from-a-string
 #       Used to get the actual table name
 
-sqltrash = {",", "NULL", "INT", "REAL", "TEXT", "BLOB", "\n"}
 
 tables = list()
 schemas = dict()
@@ -35,7 +34,7 @@ def getInfo():
 
     # Loop over all tables to add table and schema
     for result in cursor.fetchall():
-        name = result[1].replace('Input_', "", 1)
+        name = result[1].replace('Input_', "", 1) # Reference 1
         tables.append(name)
         sql = result[4]
         cols = sql.split('(')[1].split(')')[0]
