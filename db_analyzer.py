@@ -57,11 +57,34 @@ def getDependancies(tables):
             # Add all dependancies
             tmpdict = dict()
             for result in cursor.fetchall():
-                tmpdict[tuple(result[0].split(','))] = result[1].split(',')
-            dependancies[table] = tmpdict
+				lhs = tuple(sorted(result[0].split(',')))
+				rhs = sorted(result[1].split(','))
+				tmpdict[lhs] = rhs
 
-            return dependancies
+            dependancies[table] = tmpdict
+	return dependancies
+
+# Method to get the closure of rhs set
+def getClosure(closure, rhs, dependancies):
+	# Initialize the closure if necessary & determine length
+	if (closure==None):
+		closure = set(rhs)
+	length = len(closure)
+
+	# Loop through all LHS and see if we can append to closure
+	for dep in dependancies:
+		if closure.issuperset(dep) and closure.issuperset(dependancies[dep])==False:
+			closure = closure.union(dependancies[dep])
+			closure = set(sorted(closure))
+
+	# Recurse if necessary
+	if len(closure)==length:
+		return closure
+	else:
+		return getClosure(closure, rhs, dependancies)
+
 
 getDB()
 tables, schemas = getInfo()
 dependancies = getDependancies(tables)
+print(getClosure(None, ('A', 'B', 'H'), dependancies[tables[1]]))
