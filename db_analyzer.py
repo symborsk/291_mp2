@@ -85,7 +85,7 @@ def getClosure(closure, rhs, dependancies):
 	else:
 		return getClosure(closure, rhs, dependancies)
 
-def getSuperKeys(table):
+def getKeys(table):
 	cols = schemas[table]
 	superkeys = list()
 	# Try all possible combinations of columns to create superkeys
@@ -93,7 +93,14 @@ def getSuperKeys(table):
 		for j in list(itertools.combinations(cols, i)):
 			if (len(getClosure(None, j, dependancies["FDs_"+table]))==len(cols)):
 				superkeys.append(j)
-	return superkeys
+
+    # 1st instance in superkeys will always have min length
+    minLength = len(superkeys[0])
+    result = list()
+    for key in superkeys:
+        if len(key)==minLength:
+            result.append(key)
+	return result
 
 def isSuperKey(key, table):
     cols = schemas[table]
@@ -102,13 +109,33 @@ def isSuperKey(key, table):
 
 def checkBCNF(table, dependancies):
     for dep in dependancies:
-        if not dep.issuperset(dependancies[dep]) or not isSuperKey(dep, table):
+        if not set(dep).issuperset(dependancies[dep]) or not isSuperKey(dep, table):
             return False
 
     return True
 
+def decompBCNF(table, dependancies):
+    newtables = list()
+    newschemas = dict()
+    while not checkBCNF(table, dependancies):
+        for dep in dependancies.keys():
+            if not set(dep).issuperset(dependancies[dep]) or not isSuperKey(dep, table):
+                newcols = set(dep).union(dependancies[dep])
+                removecols = set(dependancies.pop(dep)).difference(dep)
+                newname = "Output_" + table + "_" + "".join(newcols)
+                newtables.append(newname)
+                newschemas[newname] = newcols
+                dependancies = updateDependancies(dependancies, removecols)
+
+    return newtables
+
+def updateDependancies(dependancies, removecols):
+    for col in removecols:
+        for dep in dependancies.keys():
+            if col in dependancies[dep]:
+                dependancies[dep].remove(col)
 
 getDB()
 tables, schemas = getInfo()
 dependancies = getDependancies(tables)
-print(getSuperKeys("R1"))
+print(decompBCNF("R1", dependancies["FDs_R1"]))
