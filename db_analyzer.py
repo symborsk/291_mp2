@@ -1,4 +1,5 @@
 import sqlite3
+import itertools
 
 # References
 #   1: http://stackoverflow.com/questions/10648490/removing-first-appearance-of-word-from-a-string
@@ -6,6 +7,7 @@ import sqlite3
 
 
 tables = list()
+FDs = list()
 schemas = dict()
 dependancies = dict()
 
@@ -35,6 +37,9 @@ def getInfo():
     # Loop over all tables to add table and schema
     for result in cursor.fetchall():
         name = result[1].replace('Input_', "", 1) # Reference 1
+        if name.split("_")[0].lower() == "fds":
+            FDs.append(name)
+            continue
         tables.append(name)
         sql = result[4]
         cols = sql.split('(')[1].split(')')[0]
@@ -45,24 +50,21 @@ def getInfo():
 
 # Method to populate dependancies dictionary
 def getDependancies(tables):
-    for table in tables:
-        # Only deal with dependancy tables
-        if table.split("_")[0].lower() != "fds":
-            continue
-        else:
-            # Get all dependancies
-            sql = "SELECT * FROM {}".format("Input_" + table)
-            cursor.execute(sql)
+    for table in FDs:
+        # Get all dependancies
+        sql = "SELECT * FROM {}".format("Input_" + table)
+        cursor.execute(sql)
 
-            # Add all dependancies
-            tmpdict = dict()
-            for result in cursor.fetchall():
-				lhs = tuple(sorted(result[0].split(',')))
-				rhs = sorted(result[1].split(','))
-				tmpdict[lhs] = rhs
+        # Add all dependancies
+        tmpdict = dict()
+        for result in cursor.fetchall():
+            lhs = tuple(sorted(result[0].split(',')))
+            rhs = sorted(result[1].split(','))
+            tmpdict[lhs] = rhs
 
-            dependancies[table] = tmpdict
-	return dependancies
+        dependancies[table] = tmpdict
+
+    return dependancies
 
 # Method to get the closure of rhs set
 def getClosure(closure, rhs, dependancies):
@@ -83,8 +85,57 @@ def getClosure(closure, rhs, dependancies):
 	else:
 		return getClosure(closure, rhs, dependancies)
 
+def getKeys(table):
+	cols = schemas[table]
+	superkeys = list()
+	# Try all possible combinations of columns to create superkeys
+	for i in range(0, len(cols), 1):
+		for j in list(itertools.combinations(cols, i)):
+			if (len(getClosure(None, j, dependancies["FDs_"+table]))==len(cols)):
+				superkeys.append(j)
+
+    # 1st instance in superkeys will always have min length
+    minLength = len(superkeys[0])
+    result = list()
+    for key in superkeys:
+        if len(key)==minLength:
+            result.append(key)
+	return result
+
+def isSuperKey(key, table):
+    cols = schemas[table]
+    return len(getClosure(None, key, dependancies["FDs_"+table]))==len(cols)
+
+
+def checkBCNF(table, dependancies):
+    for dep in dependancies:
+        if not set(dep).issuperset(dependancies[dep]) or not isSuperKey(dep, table):
+            return False
+
+    return True
+
+def decompBCNF(table, dependancies):
+    newtables = list()
+    newschemas = dict()
+    while not checkBCNF(table, dependancies):
+        for dep in dependancies.keys():
+            if not set(dep).issuperset(dependancies[dep]) or not isSuperKey(dep, table):
+                newcols = set(dep).union(dependancies[dep])
+                removecols = set(dependancies.pop(dep)).difference(dep)
+                newname = "Output_" + table + "_" + "".join(newcols)
+                newtables.append(newname)
+                newschemas[newname] = newcols
+                dependancies = updateDependancies(dependancies, removecols)
+
+    return newtables
+
+def updateDependancies(dependancies, removecols):
+    for col in removecols:
+        for dep in dependancies.keys():
+            if col in dependancies[dep]:
+                dependancies[dep].remove(col)
 
 getDB()
 tables, schemas = getInfo()
 dependancies = getDependancies(tables)
-print(getClosure(None, ('A', 'B', 'H'), dependancies[tables[1]]))
+print(decompBCNF("R1", dependancies["FDs_R1"]))
