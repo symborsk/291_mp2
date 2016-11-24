@@ -1,141 +1,305 @@
+import sys
 import sqlite3
 import itertools
+import copy
 
 # References
 #   1: http://stackoverflow.com/questions/10648490/removing-first-appearance-of-word-from-a-string
 #       Used to get the actual table name
 
 
-tables = list()
-FDs = list()
-schemas = dict()
-dependancies = dict()
+tables = dict()
 
 # Method to get a database to normalize from user
 def getDB():
-    while True:
-        # Get a filename
-        print("Welcome to the Database Normalizer Program.\nPlease enter the name of the database you would like to normalize:")
-        dbName = raw_input(">> ")
+	while True:
+		# Get a filename
+		print("Welcome to the Database Normalizer Program.\nPlease enter the name of the database you would like to normalize:")
+		dbName = raw_input(">> ")
 
-        # Attempt to connect to DB
-        try:
-            global conn
-            global cursor
-            conn = sqlite3.connect(dbName)
-            cursor = conn.cursor()
-            return
-        except:
-            print("Entered an invalid file name")
+		# Attempt to connect to DB
+		try:
+			global conn
+			global cursor
+			conn = sqlite3.connect(dbName)
+			cursor = conn.cursor()
+			return
+		except:
+			print("Entered an invalid file name")
 
 # Method to populate tables & schemas variables
 def getInfo():
-    # Get data for all tables in DB
-    sql = "SELECT * FROM SQLITE_MASTER WHERE type='table'"
-    cursor.execute(sql)
+	# Get data for all tables in DB
+	sql = "SELECT * FROM SQLITE_MASTER WHERE type='table'"
+	cursor.execute(sql)
 
-    # Loop over all tables to add table and schema
-    for result in cursor.fetchall():
-        name = result[1].replace('Input_', "", 1) # Reference 1
-        if name.split("_")[0].lower() == "fds":
-            FDs.append(name)
-            continue
-        tables.append(name)
-        sql = result[4]
-        cols = sql.split('(')[1].split(')')[0]
-        lines = [line.strip().split(' ')[0] for line in cols.split(',')]
-        schemas[name] = lines
-
-    return tables, schemas
+	# Loop over all tables to add table and schema
+	for result in cursor.fetchall():
+		if result[1][0:6]=="Input_":
+			name = result[1].replace('Input_', "", 1) # Reference 1
+			if name.split("_")[0].lower() == "fds":
+				continue
+			sql = result[4]
+			cols = sql.split('(')[1].split(')')[0]
+			lines = [line.strip().split(' ')[0] for line in cols.split(',')]
+			types = [line.strip().split(' ')[1] for line in cols.split(',')]
+			tables[name] = dict()
+			tables[name][0] = lines
+			tables[name][2] = types
 
 # Method to populate dependancies dictionary
-def getDependancies(tables):
-    for table in FDs:
-        # Get all dependancies
-        sql = "SELECT * FROM {}".format("Input_" + table)
-        cursor.execute(sql)
+def getDependancies():
+	for name in tables:
+		# Get all dependancies
+		sql = "SELECT * FROM {}".format("Input_FDs_" + name)
+		cursor.execute(sql)
 
-        # Add all dependancies
-        tmpdict = dict()
-        for result in cursor.fetchall():
-            lhs = tuple(sorted(result[0].split(',')))
-            rhs = sorted(result[1].split(','))
-            tmpdict[lhs] = rhs
+		# Add all dependancies
+		tmpdict = dict()
+		for result in cursor.fetchall():
+			lhs = tuple(sorted(result[0].split(',')))
+			rhs = set(sorted(result[1].split(',')))
+			tmpdict[lhs] = rhs
 
-        dependancies[table] = tmpdict
-
-    return dependancies
+		tables[name][1] = tmpdict
 
 # Method to get the closure of rhs set
-def getClosure(closure, rhs, dependancies):
+def getClosure(closure, lhs, dependancies):
 	# Initialize the closure if necessary & determine length
 	if (closure==None):
-		closure = set(rhs)
+		closure = set(lhs)
 	length = len(closure)
 
 	# Loop through all LHS and see if we can append to closure
 	for dep in dependancies:
-		if closure.issuperset(dep) and closure.issuperset(dependancies[dep])==False:
-			closure = closure.union(dependancies[dep])
-			closure = set(sorted(closure))
+		if closure.issuperset(dep) and not closure.issuperset(dependancies[dep]):
+			closure = set(sorted(closure.union(dependancies[dep])))
 
 	# Recurse if necessary
 	if len(closure)==length:
 		return closure
 	else:
-		return getClosure(closure, rhs, dependancies)
+		return getClosure(closure, lhs, dependancies)
 
 def getKeys(table):
-	cols = schemas[table]
 	superkeys = list()
 	# Try all possible combinations of columns to create superkeys
 	for i in range(0, len(cols), 1):
-		for j in list(itertools.combinations(cols, i)):
-			if (len(getClosure(None, j, dependancies["FDs_"+table]))==len(cols)):
+		for j in list(itertools.combinations(cols, i+1)):
+			if (len(getClosure(None, j, tables[table][1]))==len(tables[table][0])):
 				superkeys.append(j)
 
-    # 1st instance in superkeys will always have min length
-    minLength = len(superkeys[0])
-    result = list()
-    for key in superkeys:
-        if len(key)==minLength:
-            result.append(key)
+	# 1st instance in superkeys will always have min length
+	minLength = len(superkeys[0])
+	result = list()
+	for key in superkeys:
+		if len(key)==minLength:
+			result.append(key)
 	return result
 
-def isSuperKey(key, table):
-    cols = schemas[table]
-    return len(getClosure(None, key, dependancies["FDs_"+table]))==len(cols)
+def isSuperKey(key, dependancies, schema):
+	a = getClosure(None, key, dependancies)
+	return len(a)==len(schema)
 
 
-def checkBCNF(table, dependancies):
-    for dep in dependancies:
-        if not set(dep).issuperset(dependancies[dep]) or not isSuperKey(dep, table):
-            return False
+# Checks if the given table is in BCNF format
+def checkBCNF(dependancies, schema):
+	for dep in dependancies:
+		if not set(dep).issuperset(dependancies) and not isSuperKey(dep, dependancies, schema):
+			return False
 
-    return True
+	return True
 
-def decompBCNF(table, dependancies):
-    newtables = list()
-    newschemas = dict()
-    while not checkBCNF(table, dependancies):
-        for dep in dependancies.keys():
-            if not set(dep).issuperset(dependancies[dep]) or not isSuperKey(dep, table):
-                newcols = set(dep).union(dependancies[dep])
-                removecols = set(dependancies.pop(dep)).difference(dep)
-                newname = "Output_" + table + "_" + "".join(newcols)
-                newtables.append(newname)
-                newschemas[newname] = newcols
-                dependancies = updateDependancies(dependancies, removecols)
+def getInvalidTable(decomp):
+	for table in decomp:
+		if not checkBCNF(decomp[table][0], decomp[table][1]):
+			return table
+	return -1
 
-    return newtables
+# Returns the first invalid FD in the table
+def getInvalidFD(table, dependancies, schema):
+	# Ideally we first want to remove FDs which don't impact other FDs
+	for dep in dependancies:
+		if not set(dep).issuperset(dependancies[dep]) and not isSuperKey(dep, dependancies, schema) and not dependancies[dep] in dependancies.keys():
+			return dep, dependancies[dep]
 
-def updateDependancies(dependancies, removecols):
-    for col in removecols:
-        for dep in dependancies.keys():
-            if col in dependancies[dep]:
-                dependancies[dep].remove(col)
+	# Get any invalid FD
+	for dep in dependancies:
+		if not set(dep).issuperset(dependancies[dep]) and not isSuperKey(dep, dependancies, schema):
+			return dep, dependancies[dep]
 
-getDB()
-tables, schemas = getInfo()
-dependancies = getDependancies(tables)
-print(decompBCNF("R1", dependancies["FDs_R1"]))
+	return -1, -1
+
+def getFDs(newschema, dependancies):
+	newfds = dict()
+	for dep in dependancies:
+		curr = set(dep).union(dependancies[dep])
+		if curr.issubset(newschema):
+			newfds[tuple(copy.deepcopy(dep))] = copy.deepcopy(dependancies[dep])
+	return newfds
+
+def updateFDs(schema, dependancies):
+	for dep in dependancies.keys():
+		curr = set(dep).union(dependancies[dep])
+		val = dependancies.pop(dep)
+		if not curr.intersection(schema)==set():
+			# Re add necessary parts
+			dep = set(dep).intersection(schema)
+			val = set(val).intersection(schema)
+			if not dep==set() and not val==set():
+				dependancies[tuple(dep)] = val
+
+def decompBCNF(table):
+	decomp = dict()
+	decomp[table] = [copy.deepcopy(tables[table][1]), copy.deepcopy(tables[table][0])]
+	
+	while True:
+		currTable = getInvalidTable(decomp)
+		# Finished case
+		if currTable==-1:
+			# Handle initial table then return
+			newname = table+"_"+"".join(decomp[table][1])
+			decomp[newname] = decomp.pop(table)
+			showDecomp(decomp)
+			checkPreservation(tables[table][1], decomp)
+			return 
+
+		currFDs = decomp[currTable][0]
+		currSchema = decomp[currTable][1]
+
+		lhs, rhs = getInvalidFD(currTable, currFDs, currSchema)
+		newschema = set(lhs).union(rhs)
+		currSchema = set(currSchema).difference(rhs)
+
+		newfds = getFDs(newschema, currFDs)
+		updateFDs(currSchema, currFDs)
+		newname = table + "_" + "".join(newschema)
+		decomp[currTable] = [currFDs, currSchema]
+		decomp[newname] = [newfds, newschema]
+
+def checkPreservation(dependancies, decomp):
+	tempFDs = dict()
+	preserved = True
+	for table in decomp:
+		for lhs in decomp[table][0]:
+			try:
+				tempFDs[lhs] += decomp[table][0][lhs]
+			except KeyError:
+				tempFDs[lhs] = decomp[table][0][lhs]
+
+	if checkEquivalency(dependancies, tempFDs):
+		print "Dependancy was preserved."
+	else:
+		print "Dependancy was not preserved."
+
+def showDecomp(decomp):
+	for key in decomp:
+		print "Table ", key
+		print "Schema ", "".join(decomp[key][1])
+		for dep in decomp[key][0]:
+				print "".join(dep), " --> ", "".join(decomp[key][0][dep])
+		print " "
+		print " "
+
+def userCheckEquivalency():
+	set1 = getInput("Please enter a comma separated list of tables for the first set:")
+	set2 = getInput("Please enter a comma separated list of tables for the second set:")
+
+	set1 = set([x.strip() for x in set1.split(",")])
+	fds1 = dict()
+	vals1 = set()
+	set2 = set([x.strip() for x in set2.split(",")])
+	fds2 = dict()
+	vals2 = set()
+
+	for table1 in set1:
+		addFDs(table1, fds1)
+
+	for table2 in set2:
+		addFDs(table2, fds2)
+
+	if checkEquivalency:
+		print "The two sets are equivalent."
+	else:
+		print "The two sets are not equivalent."
+
+def checkEquivalency(fds1, fds2):
+	vals1 = set(fds1.values()).union(fds1.keys())
+	vals2 = set(fds2.values()).union(fds2.keys())
+
+	if not vals1==vals2:
+		return False
+
+	else:
+		for val in vals1:
+			if not getClosure(None, val, fds1)==getClosure(None, val, fds2):
+				return False
+
+	# If all elements have the same closure in both sets then they both entail each other & are equivalent
+	return True
+
+
+def addFDs(table, inputdict):
+	sql = "SELECT * FROM {}".format(table)
+	cursor.execute(sql)
+	results = cursor.fetchall()
+
+	for result in results:
+		inputdict[result[0]] = result[1]
+		print result[0], " --> ", result[1]
+
+
+def getInput(str):
+	print str
+	sel = raw_input(">>")
+	if sel.lower()==".exit":
+		quit()
+	return sel
+
+
+def applicationMenu():
+	print "\nWelcome to the Database Analyzer Program"
+
+	# Attempt to connect to an inputted db
+	try:
+		global conn
+		global cursor
+		if sys.argv[1][-3:] == ".db":
+			conn = sqlite3.connect(sys.argv[1])
+			cursor = conn.cursor()
+		else:
+			getDB()
+	# No input provided
+	except IndexError:
+		getDB()
+
+	# Handle all user input until they exit
+	while True:
+		print "\n\nWhat would you like to do?\nPress '.exit' at any time to quit."
+		options = {"\n1. Normalize a database",
+			"2. Check set equivalency"}
+		sel = getInput("\n".join(options))
+		# Normalization
+		if sel=='1':
+			# Gather info on Input_ & Input_FDs tables
+			getInfo()
+			getDependancies()
+
+			# Loop until user provides proper input
+			waiting = True
+			while waiting:
+				sel = getInput("\nHow would you like to normalize? \n1. BCNF \n2. 3NF")
+				if sel=='1':
+					decompBCNF(getInput("Please enter a table name:"))
+					waiting = False
+				elif sel=='2':
+					print "Johns stuff"
+				else:
+					print "Please make a valid selection."
+		elif sel=='2':
+			userCheckEquivalency()
+		else:
+			print "Please make a valid selection."
+
+
+applicationMenu()
