@@ -341,9 +341,10 @@ def applicationMenu():
 		else:
 			print "Please make a valid selection."
 
+#Performs all the steps to decompose the given table into 3nf form
 def decomp3nf(tableName):
 	fds = tables[tableName][1]
-	removeRedundantLHSFds(fds)
+	removeRedundantLhsFds(fds)
 	removeRedudantFds(fds)
 	for key in fds:
 		if(isSuperKey(key, tables[tableName][1], tables[tableName][0])):
@@ -354,6 +355,8 @@ def decomp3nf(tableName):
 	fds[primaryKey[0]] = tuple()
 	putIntoTable(fds, "R1")
 
+#remove all the redudant fds for specific group, checks if the closure of a grouping still can be inferred
+#after removing that explicit fd. ex remove a-->b and check if in the closure of a that  b is still there
 def removeRedudantFds(fds):
 
 	for key in fds:
@@ -367,8 +370,8 @@ def removeRedudantFds(fds):
 			if(fd  not in entail):
 				fds[key] = priorValue
 
-def removeRedundantLHSFds(fds):
-
+#Runs through all the 
+def removeRedundantLhsFds(fds):
 	for key in fds:
 		#Get the size and value
 		value = fds[key]
@@ -379,12 +382,13 @@ def removeRedundantLHSFds(fds):
 
 			for i in range(1, size):
 				possibleSubSets = list(itertools.combinations(key, i))
-				if(removeRedudantLhs(key, possibleSubSets, fds)):
-					removeRedundantLHSFds(fds)
+				if(canRemoveValueLhsFds(key, possibleSubSets, fds)):
+					removeRedundantLhsFds(fds)
 					return
 
-#returns true if 
-def removeRedudantLhs(key, possibleSubsets, fds):
+#Trys to remove a redudant values from the lhs and checks if the closure stays the same
+# return True if you successfully remove it returns false if there nothing redundant
+def canRemoveValueLhsFds(key, possibleSubsets, fds):
 	oldValue = fds[key]
 	
 
@@ -402,6 +406,7 @@ def removeRedudantLhs(key, possibleSubsets, fds):
 
 	return False
 
+#Generic function regenerate a tuple without the element_to_remove
 def tuple_without(original_tuple, element_to_remove):
 	new_tuple = []
 	for s in list(original_tuple):
@@ -409,22 +414,32 @@ def tuple_without(original_tuple, element_to_remove):
 			new_tuple.append(s)
 	return tuple(new_tuple)
 
+#Puts an output either bncf or 3nf into an actualy output table
 def putIntoTable(fds, nameOfTable):
 
 	#Generate schema table
 	for fdKey in fds:
 		fdVal = fds[fdKey]
 		schemaTableName = "Output_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
+		
+		cursor.execute("Drop Table if exists {}".format(schemaTableName))
+		conn.commit()
+		
 		sqlSchema = generateCreateTableQuery(fdKey, fdVal, schemaTableName, nameOfTable)
 		cursor.execute(sqlSchema)
 		conn.commit()
 
 		fdTableName = "Output_FDS_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
+		
+		cursor.execute("Drop Table if exists {}".format(fdTableName))
+		conn.commit()
+		
 		sqlFd = "Create Table {}(LHS TEXT, RHS TEXT)".format(fdTableName)
 		cursor.execute(sqlFd)
 		insertFdsIntoDb(fdKey, fdVal, fdTableName)
 		conn.commit()
 
+#Generates all the columns in a specific grouping
 def generateOutputString(fdKey, fdValue):
 	tempString = str()
 	for key in fdKey:
@@ -433,6 +448,8 @@ def generateOutputString(fdKey, fdValue):
 		tempString += str(val)
 	return tempString
 
+#Generates a generic create table query for a grouping with LHS fdKey and RHS of fdValue
+#Output name in the name of table being made inputName in the name of table eg "R1" that is in the input table
 def generateCreateTableQuery(fdKey, fdValue, outputName, inputName):
 	tempQuery = "Create Table {}(".format(outputName)
 	primaryKeyQuery = "primary key("
@@ -451,6 +468,7 @@ def generateCreateTableQuery(fdKey, fdValue, outputName, inputName):
 
 	return tempQuery
 
+#Inserts into a specific table of name the fd grouping 
 def insertFdsIntoDb(fdKey, fdValue, name):
 	lhs = str()
 	rhs = str()
@@ -468,10 +486,11 @@ def insertFdsIntoDb(fdKey, fdValue, name):
 	params = (lhs,rhs)
 	cursor.execute(sql, params)
 
+#A user prompt to ask them if they would like to fill in values for output tables
 def promptToFillTables(tableName):
 	
 	while True:
-		userInput = getInput("Would you like to fill output tables" + tableName + "(Y/N)")
+		userInput = getInput("Would you like to fill output tables " + tableName + " (Y/N)")
 		if(userInput.lower() == "y"):
 			return True
 		elif(userInput.lower() =="n"):
@@ -541,6 +560,7 @@ def fillTables(tableName):
 					cursor.execute(sql3, params)
 					conn.commit()												
 
+#Generates a insert into of the correct number of values in listOfValue
 def InsertInto(listOfValue, tableName):
 	stringQuery = "Insert into {} VALUES (".format(tableName)
 
