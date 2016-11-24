@@ -87,8 +87,8 @@ def getClosure(closure, lhs, dependancies):
 def getKeys(table):
 	superkeys = list()
 	# Try all possible combinations of columns to create superkeys
-	for i in range(0, len(cols), 1):
-		for j in list(itertools.combinations(cols, i+1)):
+	for i in range(0, len(tables[table][0]), 1):
+		for j in list(itertools.combinations(tables[table][0], i+1)):
 			if (len(getClosure(None, j, tables[table][1]))==len(tables[table][0])):
 				superkeys.append(j)
 
@@ -202,7 +202,6 @@ def showDecomp(decomp):
 		for dep in decomp[key][0]:
 				print "".join(dep), " --> ", "".join(decomp[key][0][dep])
 		print " "
-		print " "
 
 def userCheckEquivalency():
 	set1 = getInput("Please enter a comma separated list of tables for the first set:")
@@ -221,14 +220,21 @@ def userCheckEquivalency():
 	for table2 in set2:
 		addFDs(table2, fds2)
 
-	if checkEquivalency:
+	if checkEquivalency(fds1, fds2):
 		print "The two sets are equivalent."
 	else:
 		print "The two sets are not equivalent."
 
 def checkEquivalency(fds1, fds2):
-	vals1 = set(tuple(fds1.values())).union(tuple(fds1.keys()))
-	vals2 = set(tuple(fds2.values())).union(tuple(fds2.keys()))
+	vals1 = set()
+	for key in fds1:
+		vals1 = vals1.union(key)
+		vals1 = vals1.union(fds1[key])
+
+	vals2 = set()
+	for key in fds2:
+		vals2 = vals2.union(key)
+		vals2 = vals2.union(fds2[key])
 
 	if not vals1==vals2:
 		return False
@@ -248,9 +254,9 @@ def addFDs(table, inputdict):
 	results = cursor.fetchall()
 
 	for result in results:
-		inputdict[result[0]] = result[1]
-		print result[0], " --> ", result[1]
-
+		key = tuple([x.strip() for x in result[0].split(',')])
+		val = [x.strip() for x in result[1].split(',')]
+		inputdict[key] = val
 
 def getInput(str):
 	print str
