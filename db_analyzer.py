@@ -37,6 +37,8 @@ def getInfo():
 	for result in cursor.fetchall():
 		if result[1][0:6]=="Input_":
 			name = result[1].replace('Input_', "", 1) # Reference 1
+			
+			# Dont read the FD tables
 			if name.split("_")[0].lower() == "fds":
 				continue
 			sql = result[4]
@@ -44,8 +46,8 @@ def getInfo():
 			lines = list()
 			types = dict()
 			for line in cols.split(','):
-				lines.append(line.strip().split(' ')[0])
-				types[line.strip().split(' ')[0]] = line.strip().split(' ')[1]
+				lines.append(line.strip().split()[0])
+				types[line.strip().split()[0]] = line.strip().split()[1]
 			tables[name] = dict()
 			tables[name][0] = lines
 			tables[name][2] = types
@@ -240,9 +242,10 @@ def checkEquivalency(fds1, fds2):
 		return False
 
 	else:
-		for val in vals1:
-			if not getClosure(None, val, fds1)==getClosure(None, val, fds2):
-				return False
+		for i in range(1, len(vals1)+1):
+			for val in itertools.combinations(vals1, i):
+				if not getClosure(None, val, fds1)==getClosure(None, val, fds2):
+					return False
 
 	# If all elements have the same closure in both sets then they both entail each other & are equivalent
 	return True
@@ -263,6 +266,7 @@ def getInput(str):
 	sel = raw_input(">>")
 	if sel.lower()==".exit":
 		quit()
+	print ""
 	return sel
 
 
@@ -288,9 +292,10 @@ def applicationMenu():
 
 	# Handle all user input until they exit
 	while True:
-		print "\n\nWhat would you like to do?\nPress '.exit' at any time to quit."
-		options = {"\n1. Normalize a database",
-			"2. Check set equivalency"}
+		print "\nWhat would you like to do?\nPress '.exit' at any time to quit."
+		options = {"3. Get closure of an attribute",
+			"2. Check set equivalency",
+			"\n1. Normalize a database"}
 		sel = getInput("\n".join(options))
 		# Normalization
 		if sel=='1':
@@ -305,8 +310,17 @@ def applicationMenu():
 					print "Johns stuff"
 				else:
 					print "Please make a valid selection."
+		# Outward facing set equivalency check
 		elif sel=='2':
 			userCheckEquivalency()
+		elif sel=='3':
+			table = getInput("Please enter the name of the dependancy table:")
+			atts = [x.strip() for x in getInput("Please enter a comma separated list of attributes:").split(',')]
+			fds = dict()
+			addFDs(table, fds)
+			closure = getClosure(None, atts, fds)
+			resultstr = "".join(atts) + "+ = "+ "".join(closure)
+			print resultstr
 		else:
 			print "Please make a valid selection."
 
