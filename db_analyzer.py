@@ -41,8 +41,11 @@ def getInfo():
 				continue
 			sql = result[4]
 			cols = sql.split('(')[1].split(')')[0]
-			lines = [line.strip().split(' ')[0] for line in cols.split(',')]
-			types = [line.strip().split(' ')[1] for line in cols.split(',')]
+			lines = list()
+			types = dict()
+			for line in cols.split(','):
+				lines.append(line.strip().split(' ')[0])
+				types[line.strip().split(' ')[0]] = line.strip().split(' ')[1]
 			tables[name] = dict()
 			tables[name][0] = lines
 			tables[name][2] = types
@@ -224,8 +227,8 @@ def userCheckEquivalency():
 		print "The two sets are not equivalent."
 
 def checkEquivalency(fds1, fds2):
-	vals1 = set(fds1.values()).union(fds1.keys())
-	vals2 = set(fds2.values()).union(fds2.keys())
+	vals1 = set(tuple(fds1.values())).union(tuple(fds1.keys()))
+	vals2 = set(tuple(fds2.values())).union(tuple(fds2.keys()))
 
 	if not vals1==vals2:
 		return False
@@ -273,6 +276,10 @@ def applicationMenu():
 	except IndexError:
 		getDB()
 
+	# Gather info on Input_ & Input_FDs tables
+	getInfo()
+	getDependancies()
+
 	# Handle all user input until they exit
 	while True:
 		print "\n\nWhat would you like to do?\nPress '.exit' at any time to quit."
@@ -281,10 +288,6 @@ def applicationMenu():
 		sel = getInput("\n".join(options))
 		# Normalization
 		if sel=='1':
-			# Gather info on Input_ & Input_FDs tables
-			getInfo()
-			getDependancies()
-
 			# Loop until user provides proper input
 			waiting = True
 			while waiting:
