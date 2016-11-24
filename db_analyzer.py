@@ -64,7 +64,10 @@ def getDependancies():
 		for result in cursor.fetchall():
 			lhs = tuple(sorted(result[0].split(',')))
 			rhs = set(sorted(result[1].split(',')))
-			tmpdict[lhs] = rhs
+			try:
+				tmpdict[lhs] = tmpdict[lhs].union(rhs)
+			except KeyError:
+				tmpdict[lhs] = rhs
 
 		tables[name][1] = tmpdict
 
@@ -163,7 +166,7 @@ def decompBCNF(table):
 		# Finished case
 		if currTable==-1:
 			# Handle initial table then return
-			newname = table+"_"+"".join(decomp[table][1])
+			newname = "Output_"+table+"_"+"".join(sorted(decomp[table][1]))
 			decomp[newname] = decomp.pop(table)
 			#Show decomp also puts the dependencies in valid format to be user in our put into table
 			fds = showDecomp(decomp)
@@ -179,11 +182,15 @@ def decompBCNF(table):
 		lhs, rhs = getInvalidFD(currTable, currFDs, currSchema)
 		newschema = set(lhs).union(rhs)
 		currSchema = set(currSchema).difference(rhs)
-
 		newfds = getFDs(newschema, currFDs)
 		updateFDs(currSchema, currFDs)
-		newname = table + "_" + "".join(newschema)
-		decomp[currTable] = [currFDs, currSchema]
+		newname = "Output_" + table + "_" + "".join(sorted(newschema))
+		if currTable[0:7]=="Output_":
+			rename = "Output_" + table + "_" + "".join(sorted(currSchema))
+			decomp[rename] = [currFDs, currSchema]
+			decomp.pop(currTable)
+		else:
+			decomp[currTable] = [currFDs, currSchema]
 		decomp[newname] = [newfds, newschema]
 
 def checkPreservation(dependancies, decomp):
