@@ -307,7 +307,8 @@ def applicationMenu():
 					decompBCNF(getInput("Please enter a table name:"))
 					waiting = False
 				elif sel=='2':
-					print "Johns stuff"
+					decomp3nf(getInput("Please enter a table name:"))
+					waiting = False
 				else:
 					print "Please make a valid selection."
 		# Outward facing set equivalency check
@@ -324,5 +325,131 @@ def applicationMenu():
 		else:
 			print "Please make a valid selection."
 
+def decomp3nf(tableName):
+	fds = tables[tableName][1]
+	removeRedundantLHSFds(fds)
+	removeRedudantFds(fds)
+	for key in fds:
+		if(isSuperKey(key, tables[tableName][1], tables[tableName][0])):
+			return
+		
+	# if none are super keys add the key
+	primaryKey = getKeys(tableName)
+	fds[primaryKey[0]] = tuple()
+	put3nfIntoTable(fds, "R1")
+
+def removeRedudantFds(fds):
+
+	for key in fds:
+		priorValue = fds[key]
+		for fd in priorValue:
+			#each value in our tuple lfs corresponds to a fd so removing it is like removing an fd
+			fds[key] = tuple_without(priorValue, fd) 
+			entail = tuple(getClosure(None, key, fds))
+
+			#If we can not infer fd from the 
+			if(fd  not in entail):
+				fds[key] = priorValue
+
+def removeRedundantLHSFds(fds):
+
+	for key in fds:
+		#Get the size and value
+		value = fds[key]
+		size = len(key)
+
+		#Only possible to have redudant ones if the size is greater then one
+		if(size > 1):
+
+			for i in range(1, size):
+				possibleSubSets = list(itertools.combinations(key, i))
+				if(removeRedudantLhs(key, possibleSubSets, fds)):
+					removeRedundantLHSFds(fds)
+					return
+
+#returns true if 
+def removeRedudantLhs(key, possibleSubsets, fds):
+	oldValue = fds[key]
+	
+
+	for newKey in possibleSubsets:
+		newValue = tuple(getClosure(None, newKey, fds))
+
+		#If our possible subset keys contain same closure we can replace it
+		if set(oldValue).issubset(newValue):
+			if newKey in fds:
+				fds[newKey] = fds[newKey].union(fds.pop(key))
+			else:
+				fds[newKey] = fds.pop(key)
+
+			return True
+
+	return False
+
+def tuple_without(original_tuple, element_to_remove):
+	new_tuple = []
+	for s in list(original_tuple):
+		if not s == element_to_remove:
+			new_tuple.append(s)
+	return tuple(new_tuple)
+
+def put3nfIntoTable(fds, nameOfTable):
+
+	#Generate schema table
+	for fdKey in fds:
+		fdVal = fds[fdKey]
+		schemaTableName = "Output_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
+		sqlSchema = generateCreateTableQuery(fdKey, fdVal, schemaTableName, nameOfTable)
+		cursor.execute(sqlSchema)
+		conn.commit()
+
+		fdTableName = "Output_FDS_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
+		sqlFd = "Create Table {}(LHS TEXT, RHS TEXT)".format(fdTableName)
+		cursor.execute(sqlFd)
+		insertFdsIntoDb(fdKey, fdVal, fdTableName)
+		conn.commit()
+
+def generateOutputString(fdKey, fdValue):
+	tempString = str()
+	for key in fdKey:
+		tempString += str(key)
+	for val in fdValue:
+		tempString += str(val)
+	return tempString
+
+def generateCreateTableQuery(fdKey, fdValue, outputName, inputName):
+	tempQuery = "Create Table {}(".format(outputName)
+	primaryKeyQuery = "primary key("
+	for key in fdKey:
+		variableType = tables[inputName][2][key]
+		tempQuery += str(key) + " "+ variableType + ","
+		primaryKeyQuery += key + ","
+	for val in fdValue:
+		variableType = tables[inputName][2][val]
+		tempQuery += str(val) +" "+variableType + ","
+
+	#slice off the last comma as it it not neccessary
+	primaryKeyQuery = primaryKeyQuery[:-1]
+	tempQuery += primaryKeyQuery
+	tempQuery += "))"
+
+	return tempQuery
+
+def insertFdsIntoDb(fdKey, fdValue, name):
+	lhs = str()
+	rhs = str()
+
+	for key in fdKey:
+		lhs += key + ","
+	for val in fdValue:
+		rhs += val + ","
+
+	#Remove the final comma
+	lhs = lhs[:-1]
+	rhs = rhs[:-1]
+
+	sql = "Insert into {}(LHS, RHS) VALUES(?,?)".format(name)
+	params = (lhs,rhs)
+	cursor.execute(sql, params)
 
 applicationMenu()
