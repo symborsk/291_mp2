@@ -165,8 +165,12 @@ def decompBCNF(table):
 			# Handle initial table then return
 			newname = table+"_"+"".join(decomp[table][1])
 			decomp[newname] = decomp.pop(table)
-			showDecomp(decomp)
+			#Show decomp also puts the dependencies in valid format to be user in our put into table
+			fds = showDecomp(decomp)
 			checkPreservation(tables[table][1], decomp)
+			#Specifically added genereate all the fds in on dictionary
+		
+			putIntoTable(fds, table)
 			return 
 
 		currFDs = decomp[currTable][0]
@@ -198,12 +202,16 @@ def checkPreservation(dependancies, decomp):
 		print "Dependancy was not preserved."
 
 def showDecomp(decomp):
+	totalFds = dict()
 	for key in decomp:
 		print "Table ", key
 		print "Schema ", "".join(decomp[key][1])
 		for dep in decomp[key][0]:
+				totalFds[dep] = decomp[key][0][dep]
 				print "".join(dep), " --> ", "".join(decomp[key][0][dep])
 		print " "
+
+	return totalFds
 
 def userCheckEquivalency():
 	set1 = getInput("Please enter a comma separated list of tables for the first set:")
@@ -304,10 +312,18 @@ def applicationMenu():
 			while waiting:
 				sel = getInput("\nHow would you like to normalize? \n1. BCNF \n2. 3NF")
 				if sel=='1':
-					decompBCNF(getInput("Please enter a table name:"))
+					tableName =getInput("Please enter a table name:")
+					decompBCNF(tableName) 
+					
+					if(promptToFillTables(tableName)):
+						fillTables(tableName)
 					waiting = False
 				elif sel=='2':
-					decomp3nf(getInput("Please enter a table name:"))
+					tableName =getInput("Please enter a table name:")
+					decomp3nf(tableName)
+					
+					if(promptToFillTables(tableName)):
+						fillTables(tableName)
 					waiting = False
 				else:
 					print "Please make a valid selection."
@@ -336,7 +352,7 @@ def decomp3nf(tableName):
 	# if none are super keys add the key
 	primaryKey = getKeys(tableName)
 	fds[primaryKey[0]] = tuple()
-	put3nfIntoTable(fds, "R1")
+	putIntoTable(fds, "R1")
 
 def removeRedudantFds(fds):
 
@@ -393,7 +409,7 @@ def tuple_without(original_tuple, element_to_remove):
 			new_tuple.append(s)
 	return tuple(new_tuple)
 
-def put3nfIntoTable(fds, nameOfTable):
+def putIntoTable(fds, nameOfTable):
 
 	#Generate schema table
 	for fdKey in fds:
@@ -451,5 +467,88 @@ def insertFdsIntoDb(fdKey, fdValue, name):
 	sql = "Insert into {}(LHS, RHS) VALUES(?,?)".format(name)
 	params = (lhs,rhs)
 	cursor.execute(sql, params)
+
+def promptToFillTables(tableName):
+	
+	while True:
+		userInput = getInput("Would you like to fill output tables" + tableName + "(Y/N)")
+		if(userInput.lower() == "y"):
+			return True
+		elif(userInput.lower() =="n"):
+			return False
+		print("Invalid input please try again")
+
+#for filling Output_R tables from Input_R tables
+def fillTables(tableName):
+	sql = "SELECT * FROM SQLITE_MASTER WHERE type='table'"
+	cursor.execute(sql)
+	for result in cursor.fetchall():
+		#get the letters we want information for
+		if "Output_FDS" in result[1]:
+			continue
+		elif("Output_" in result[1]):
+			name = result[1].replace("Output_", "", 1)
+			for x in range(2,len(name)):
+				if (name[x] == "_"):
+					new_form = name[x+1:]
+					nameofForm = name[:x]
+
+			sql2 = "SELECT * FROM SQLITE_MASTER WHERE type='table'"
+			cursor.execute(sql2)
+
+			# get info from input, all letters are stored into listoflists, in order read
+			for resultz in cursor.fetchall():
+				if (("input_") not in resultz[1].lower()):
+					continue
+				if (nameofForm not in resultz[1]):
+					continue
+				if ("fds" in resultz[1].lower()):
+					continue
+				if( nameofForm != tableName):
+					continue
+
+				lol = []
+				lol2 = []
+				lol3 = []
+				for y1 in range(len(new_form)):
+					lol.append((str)(new_form[y1]))
+						
+				for y in range(len(new_form)):
+					sql5 = ("SELECT {} FROM {}".format( (str) (lol[y]), resultz[1]))
+					cursor.execute(sql5,)
+					values5 = cursor.fetchall()
+					lol2.append(values5)
+
+				for z in range(len(lol2[0])):
+					newlist = []
+					for w in range(len(lol2)):
+						newlist.append((str)(((lol2[w])[z])[0]))
+					lol3.append(newlist)
+							
+				stringQuery = ""
+				check = []
+				for ins in range(len(lol3)):
+					ins3 = ((lol3[ins]))
+					sql3 = (InsertInto(ins3,result[1]))
+					nl = []
+					for val in range(len(ins3)):
+						nv = (str)(ins3[val])
+						nl.append(nv)
+					if nl in check:
+						continue
+					check.append(nl)
+					params = tuple(nl)
+					cursor.execute(sql3, params)
+					conn.commit()												
+
+def InsertInto(listOfValue, tableName):
+	stringQuery = "Insert into {} VALUES (".format(tableName)
+
+	for val in listOfValue:
+		stringQuery += "?,"
+
+	stringQuery = stringQuery[:-1]
+	stringQuery += ")"
+	return stringQuery
 
 applicationMenu()
