@@ -9,6 +9,7 @@ import copy
 
 
 tables = dict()
+fds = dict()
 
 # Method to get a database to normalize from user
 def getDB():
@@ -34,8 +35,10 @@ def getInfo():
 
 	# Loop over all tables to add table and schema
 	for result in cursor.fetchall():
-		if result[1][0:6].lower()=="input_":
-			name = result[1].replace('Input_', "", 1) # Reference 1
+		if result[1][0:10].lower()=="input_fds_":
+			fds[result[1][10:].lower()] = result[1]
+		elif result[1][0:6].lower()=="input_":
+			name = result[1].lower().replace('input_', "", 1) # Reference 1
 			
 			# Dont read the FD tables
 			if name.split("_")[0].lower() == "fds":
@@ -47,15 +50,15 @@ def getInfo():
 			for line in cols.split(','):
 				lines.append(line.strip().split()[0])
 				types[line.strip().split()[0]] = line.strip().split()[1]
-			tables[name.lower()] = dict()
-			tables[name.lower()][0] = lines
-			tables[name.lower()][2] = types
+			tables[name] = dict()
+			tables[name][0] = lines
+			tables[name][2] = types
 
 # Method to populate dependancies dictionary
 def getDependancies():
-	for name in tables:
+	for fd in fds:
 		# Get all dependancies
-		sql = "SELECT * FROM {}".format("Input_FDs_" + name)
+		sql = "SELECT * FROM {}".format(fds[fd])
 		cursor.execute(sql)
 
 		# Add all dependancies
@@ -68,7 +71,7 @@ def getDependancies():
 			except KeyError:
 				tmpdict[lhs] = rhs
 
-		tables[name][1] = tmpdict
+		tables[fd][1] = tmpdict
 
 # Method to get the closure of rhs set
 def getClosure(closure, lhs, dependancies):
