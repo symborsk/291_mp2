@@ -434,7 +434,10 @@ def tuple_without(original_tuple, element_to_remove):
 #Puts an output either bncf or 3nf into an actualy output table
 def putIntoTable(fds, nameOfTable):
 	#Generate schema table
-	for fdKey in fds:
+	
+	#We need to create the largest tables first so we can generate the supersets that we add to before we 
+	#we generate possible subsets
+	for fdKey in sorted(fds, key=len, reverse=True):
 		fdVal = fds[fdKey]
 
 		isSubset, keyToInsertInto = isSchemaSubset(fds, fdKey)
