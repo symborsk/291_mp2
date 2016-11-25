@@ -306,6 +306,7 @@ def applicationMenu():
 	# Gather info on Input_ & Input_FDs tables
 	getInfo()
 	getDependancies()
+
 	# Handle all user input until they exit
 	while True:
 		print "\nWhat would you like to do?\nPress '.exit' at any time to quit."
@@ -327,7 +328,7 @@ def applicationMenu():
 						fillTables(tableName)
 					waiting = False
 				elif sel=='2':
-					tableName =getInput("Please enter a table name:")
+					tableName = getInput("Please enter a table name:")
 					decomp3nf(tableName)
 					
 					if(promptToFillTables(tableName)):
@@ -354,8 +355,10 @@ def decomp3nf(tableName):
 	fds = tables[tableName][1]
 	removeRedundantLhsFds(fds)
 	removeRedudantFds(fds)
+	print fds
 	for key in fds:
 		if(isSuperKey(key, tables[tableName][1], tables[tableName][0])):
+			putIntoTable(fds, "R1")
 			return
 		
 	# if none are super keys add the key
@@ -369,14 +372,21 @@ def removeRedudantFds(fds):
 
 	for key in fds:
 		priorValue = fds[key]
-		for fd in priorValue:
+		attemptToRemoveValues(priorValue, key, fds)
+	
+def attemptToRemoveValues(value, key, fds):
+		for fd in value:
 			#each value in our tuple lfs corresponds to a fd so removing it is like removing an fd
-			fds[key] = tuple_without(priorValue, fd) 
+			newValue = set(tuple_without(value, fd)) 
+			fds[key] = newValue
 			entail = tuple(getClosure(None, key, fds))
 
 			#If we can not infer fd from the 
 			if(fd  not in entail):
-				fds[key] = priorValue
+				fds[key] = value
+			else:
+				attemptToRemoveValues(newValue, key, fds)
+				return
 
 #Runs through all the 
 def removeRedundantLhsFds(fds):
@@ -424,7 +434,6 @@ def tuple_without(original_tuple, element_to_remove):
 
 #Puts an output either bncf or 3nf into an actualy output table
 def putIntoTable(fds, nameOfTable):
-
 	#Generate schema table
 	for fdKey in fds:
 		fdVal = fds[fdKey]
@@ -435,6 +444,7 @@ def putIntoTable(fds, nameOfTable):
 		
 		sqlSchema = generateCreateTableQuery(fdKey, fdVal, schemaTableName, nameOfTable)
 		cursor.execute(sqlSchema)
+		print sqlSchema
 		conn.commit()
 
 		fdTableName = "Output_FDS_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
