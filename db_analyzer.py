@@ -130,10 +130,16 @@ def getInvalidTable(decomp):
 def getInvalidFD(table, dependancies, schema):
 	# Ideally we first want to remove FDs which don't impact other FDs
 	for dep in dependancies:
-		if not set(dep).issuperset(dependancies[dep]) and not isSuperKey(dep, dependancies, schema) and not dependancies[dep] in dependancies.keys():
+		test = False
+		for i in range(1, len(dependancies[dep])+1):
+			for combo in itertools.combinations(dependancies[dep], i):
+				for key in dependancies.keys():
+					if set(key).issuperset(combo):
+						test=True
+		if not set(dep).issuperset(dependancies[dep]) and not isSuperKey(dep, dependancies, schema) and not test:
 			return dep, dependancies[dep]
 
-	# Get any invalid FD
+	# Get any invalid FD if present
 	for dep in dependancies:
 		if not set(dep).issuperset(dependancies[dep]) and not isSuperKey(dep, dependancies, schema):
 			return dep, dependancies[dep]
@@ -157,7 +163,10 @@ def updateFDs(schema, dependancies):
 			dep = set(dep).intersection(schema)
 			val = set(val).intersection(schema)
 			if not dep==set() and not val==set():
-				dependancies[tuple(dep)] = val
+				try:
+					dependancies[tuple(dep)] = dependancies[tuple(dep)].union(val)
+				except KeyError:
+					dependancies[tuple(dep)] = val
 
 def decompBCNF(table):
 	decomp = dict()
@@ -171,7 +180,7 @@ def decompBCNF(table):
 			newname = "Output_"+table+"_"+"".join(sorted(decomp[table][1]))
 			decomp[newname] = decomp.pop(table)
 			#Show decomp also puts the dependencies in valid format to be user in our put into table
-			fds = showDecomp(decomp)
+			fds = getTotalFDs(decomp)
 			checkPreservation(tables[table][1], decomp)
 			#Specifically added genereate all the fds in on dictionary
 		
@@ -191,6 +200,8 @@ def decompBCNF(table):
 			rename = "Output_" + table + "_" + "".join(sorted(currSchema))
 			decomp[rename] = [currFDs, currSchema]
 			decomp.pop(currTable)
+			if currTable==table:
+				table=currTable
 		else:
 			decomp[currTable] = [currFDs, currSchema]
 		decomp[newname] = [newfds, newschema]
@@ -201,7 +212,7 @@ def checkPreservation(dependancies, decomp):
 	for table in decomp:
 		for lhs in decomp[table][0]:
 			try:
-				tempFDs[lhs] += decomp[table][0][lhs]
+				tempFDs[lhs] = tempFDs[lhs].union(decomp[table][0][lhs])
 			except KeyError:
 				tempFDs[lhs] = decomp[table][0][lhs]
 
@@ -210,15 +221,11 @@ def checkPreservation(dependancies, decomp):
 	else:
 		print "Dependancy was not preserved."
 
-def showDecomp(decomp):
+def getTotalFDs(decomp):
 	totalFds = dict()
 	for key in decomp:
-		print "Table ", key
-		print "Schema ", "".join(decomp[key][1])
 		for dep in decomp[key][0]:
-				totalFds[dep] = decomp[key][0][dep]
-				print "".join(dep), " --> ", "".join(decomp[key][0][dep])
-		print " "
+			totalFds[dep] = decomp[key][0][dep]
 
 	return totalFds
 
