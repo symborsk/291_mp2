@@ -355,16 +355,15 @@ def decomp3nf(tableName):
 	fds = tables[tableName][1]
 	removeRedundantLhsFds(fds)
 	removeRedudantFds(fds)
-	print fds
 	for key in fds:
 		if(isSuperKey(key, tables[tableName][1], tables[tableName][0])):
-			putIntoTable(fds, "R1")
+			putIntoTable(fds, tableName)
 			return
 		
 	# if none are super keys add the key
 	primaryKey = getKeys(tableName)
 	fds[primaryKey[0]] = tuple()
-	putIntoTable(fds, "R1")
+	putIntoTable(fds, tableName)
 
 #remove all the redudant fds for specific group, checks if the closure of a grouping still can be inferred
 #after removing that explicit fd. ex remove a-->b and check if in the closure of a that  b is still there
@@ -437,28 +436,65 @@ def putIntoTable(fds, nameOfTable):
 	#Generate schema table
 	for fdKey in fds:
 		fdVal = fds[fdKey]
-		schemaTableName = "Output_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
-		
-		cursor.execute("Drop Table if exists {}".format(schemaTableName))
-		conn.commit()
-		
-		sqlSchema = generateCreateTableQuery(fdKey, fdVal, schemaTableName, nameOfTable)
-		cursor.execute(sqlSchema)
-		print sqlSchema
-		conn.commit()
 
-		fdTableName = "Output_FDS_" + nameOfTable + "_" + str(generateOutputString(fdKey, fdVal))
-		
-		cursor.execute("Drop Table if exists {}".format(fdTableName))
-		conn.commit()
-		
-		sqlFd = "Create Table {}(LHS TEXT, RHS TEXT)".format(fdTableName)
-		cursor.execute(sqlFd)
+		isSubset, keyToInsertInto = isSchemaSubset(fds, fdKey)
+
+		#SO we get the simplest tables we do not want to create new tables for ones that are subsets
+		fdTableName = str()
+		if(not isSubset):
+			schemaTableName = "Output_" + nameOfTable + "_" + str(generateOutputString(fdKey, fds))
+			cursor.execute("Drop Table if exists {}".format(schemaTableName))
+			conn.commit()
+			
+			sqlSchema = generateCreateTableQuery(fdKey, fdVal, schemaTableName, nameOfTable)
+			cursor.execute(sqlSchema)
+			conn.commit()
+
+			fdTableName = "Output_FDS_" + nameOfTable + "_" + str(generateOutputString(fdKey, fds))
+			cursor.execute("Drop Table if exists {}".format(fdTableName))
+			conn.commit()
+
+			sqlFd = "Create Table {}(LHS TEXT, RHS TEXT)".format(fdTableName)
+			cursor.execute(sqlFd)
+
+		#Otherwise we want to take the key to insert into and insert our already made fds into that
+		else:
+			fdTableName = "Output_FDS_" + nameOfTable + "_" + str(generateOutputString(keyToInsertInto, fds))
+
 		insertFdsIntoDb(fdKey, fdVal, fdTableName)
 		conn.commit()
 
+#Generates schema from fds and key
+def generateSchema(value, key):
+	new_tuple = []
+	for key in key:
+		new_tuple.append(key)
+	for val in value:
+		new_tuple.append(val)
+
+	return set(tuple(new_tuple))
+
+#Determines if the schema given is a subset of another schema
+def isSchemaSubset(fds, givenKey):
+	
+	schema = generateSchema(fds[givenKey], givenKey)
+	for key in fds:
+		#Obviously its own schema is a subset of itself
+		if key == givenKey:
+			continue
+		
+		temp_set = generateSchema(fds[key], key)
+
+		# We want to see if it is not equal and subset
+		if(schema.issubset(temp_set)):
+			return True, key
+
+	return False, givenKey
+
 #Generates all the columns in a specific grouping
-def generateOutputString(fdKey, fdValue):
+def generateOutputString(fdKey, fds):
+	
+	fdValue = fds[fdKey]
 	tempString = str()
 	for key in fdKey:
 		tempString += str(key)
