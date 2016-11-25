@@ -36,9 +36,9 @@ def getInfo():
 	# Loop over all tables to add table and schema
 	for result in cursor.fetchall():
 		if result[1][0:10].lower()=="input_fds_":
-			fds[result[1][10:].lower()] = result[1]
+			fds[result[1][10:]] = result[1]
 		elif result[1][0:6].lower()=="input_":
-			name = result[1].lower().replace('input_', "", 1) # Reference 1
+			name = result[1][6:]
 			
 			# Dont read the FD tables
 			if name.split("_")[0].lower() == "fds":
@@ -306,7 +306,6 @@ def applicationMenu():
 	# Gather info on Input_ & Input_FDs tables
 	getInfo()
 	getDependancies()
-
 	# Handle all user input until they exit
 	while True:
 		print "\nWhat would you like to do?\nPress '.exit' at any time to quit."
@@ -322,7 +321,7 @@ def applicationMenu():
 				sel = getInput("\nHow would you like to normalize? \n1. BCNF \n2. 3NF")
 				if sel=='1':
 					tableName =getInput("Please enter a table name:")
-					decompBCNF(tableName.lower()) 
+					decompBCNF(tableName) 
 					
 					if(promptToFillTables(tableName)):
 						fillTables(tableName)
