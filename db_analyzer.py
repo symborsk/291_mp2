@@ -14,8 +14,7 @@ tables = dict()
 def getDB():
 	while True:
 		# Get a filename
-		print("Welcome to the Database Normalizer Program.\nPlease enter the name of the database you would like to normalize:")
-		dbName = raw_input(">> ")
+		dbName = getInput("\nPlease enter the name of the database you would like to connect to:")
 
 		# Attempt to connect to DB
 		try:
@@ -35,7 +34,7 @@ def getInfo():
 
 	# Loop over all tables to add table and schema
 	for result in cursor.fetchall():
-		if result[1][0:6]=="Input_":
+		if result[1][0:6].lower()=="input_":
 			name = result[1].replace('Input_', "", 1) # Reference 1
 			
 			# Dont read the FD tables
@@ -48,9 +47,9 @@ def getInfo():
 			for line in cols.split(','):
 				lines.append(line.strip().split()[0])
 				types[line.strip().split()[0]] = line.strip().split()[1]
-			tables[name] = dict()
-			tables[name][0] = lines
-			tables[name][2] = types
+			tables[name.lower()] = dict()
+			tables[name.lower()][0] = lines
+			tables[name.lower()][2] = types
 
 # Method to populate dependancies dictionary
 def getDependancies():
@@ -320,7 +319,7 @@ def applicationMenu():
 				sel = getInput("\nHow would you like to normalize? \n1. BCNF \n2. 3NF")
 				if sel=='1':
 					tableName =getInput("Please enter a table name:")
-					decompBCNF(tableName) 
+					decompBCNF(tableName.lower()) 
 					
 					if(promptToFillTables(tableName)):
 						fillTables(tableName)
